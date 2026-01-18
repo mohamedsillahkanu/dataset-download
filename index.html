@@ -173,14 +173,6 @@
         ::-webkit-scrollbar-track { background: #f8f9fa; border-radius: 4px; }
         ::-webkit-scrollbar-thumb { background: #004080; border-radius: 4px; }
         
-        /* Facility Type Section - FIXED: Always visible when loaded */
-        .facility-type-section { background: #e7f3ff; border: 2px solid #004080; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
-        .facility-type-section h4 { color: #004080; margin-bottom: 10px; font-size: 14px; }
-        .facility-type-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-        .facility-type-chip { padding: 6px 12px; background: white; border: 2px solid #004080; border-radius: 20px; cursor: pointer; font-size: 12px; transition: all 0.2s; }
-        .facility-type-chip:hover { background: #e7f3ff; }
-        .facility-type-chip.selected { background: #004080; color: white; }
-        
         /* Responsive */
         @media (max-width: 768px) {
             .dual-panel-container { grid-template-columns: 1fr; }
@@ -318,24 +310,21 @@
                         </div>
                     </div>
 
-                    <!-- FIXED: Organisation Unit Group Sets (Facility Types) - Now with better visibility -->
+                    <!-- Organisation Unit Group Sets (Facility Types) -->
                     <div id="groupSetsContainer" style="display: none; margin-bottom: 15px;">
-                        <div class="facility-type-section">
-                            <h4>🏥 Filter by Facility Type (Optional)</h4>
+                        <label class="form-label">Filter by Facility Type (Optional)</label>
+                        <div style="margin-bottom: 10px;">
+                            <select class="form-select" id="groupSetSelect" onchange="loadGroupSetOptions()">
+                                <option value="">-- Select a Group Set --</option>
+                            </select>
+                        </div>
+                        <div id="groupOptionsContainer" style="display: none; background: #f8f9fa; border: 2px solid #004080; border-radius: 8px; padding: 15px; max-height: 200px; overflow-y: auto;">
                             <div style="margin-bottom: 10px;">
-                                <select class="form-select" id="groupSetSelect" onchange="loadGroupSetOptions()" style="max-width: 400px;">
-                                    <option value="">-- Select a Group Set --</option>
-                                </select>
+                                <button type="button" class="control-btn select-all" onclick="selectAllGroupOptions()" style="padding: 5px 10px; font-size: 11px;">Select All</button>
+                                <button type="button" class="control-btn clear" onclick="clearAllGroupOptions()" style="padding: 5px 10px; font-size: 11px;">Clear All</button>
+                                <button type="button" class="btn-secondary" onclick="applyFacilityTypeFilter()" style="padding: 5px 15px; font-size: 11px; margin-left: 10px;">Apply Filter</button>
                             </div>
-                            <div id="groupOptionsContainer" style="display: none;">
-                                <div style="margin-bottom: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
-                                    <button type="button" class="control-btn select-all" onclick="selectAllGroupOptions()" style="padding: 5px 10px; font-size: 11px;">Select All</button>
-                                    <button type="button" class="control-btn clear" onclick="clearAllGroupOptions()" style="padding: 5px 10px; font-size: 11px;">Clear All</button>
-                                    <button type="button" class="btn-gold" onclick="applyFacilityTypeFilter()" style="padding: 8px 20px; font-size: 12px;">Apply Filter</button>
-                                </div>
-                                <div class="facility-type-grid" id="groupOptionsList"></div>
-                                <p style="font-size: 11px; color: #666; margin-top: 10px;"><em>Click on facility types to select/deselect, then click "Apply Filter"</em></p>
-                            </div>
+                            <div id="groupOptionsList"></div>
                         </div>
                     </div>
 
@@ -840,7 +829,7 @@
             if (groupSetSelect) groupSetSelect.value = '';
             const groupOptionsContainer = document.getElementById('groupOptionsContainer');
             if (groupOptionsContainer) groupOptionsContainer.style.display = 'none';
-            document.querySelectorAll('#groupOptionsList .facility-type-chip').forEach(chip => chip.classList.remove('selected'));
+            document.querySelectorAll('#groupOptionsList input[type="checkbox"]').forEach(cb => cb.checked = false);
             
             if (allOrgUnitsData.length > 0 && orgUnitsData.length !== allOrgUnitsData.length) {
                 orgUnitsData = [...allOrgUnitsData];
@@ -978,7 +967,7 @@
             showNotification(`Facility level set to Level ${facilityLevel}`, 'info');
         }
 
-        // FIXED: Better group sets loading with improved visibility
+        // FIXED: Better group sets loading - ensures container is shown
         async function loadOrgUnitGroupSets() {
             try {
                 log('Fetching organisation unit group sets...', 'info');
@@ -987,6 +976,8 @@
                 if (!response.ok) throw new Error('Failed to fetch group sets');
                 const data = await response.json();
                 orgUnitGroupSets = data.organisationUnitGroupSets || [];
+                
+                console.log('Group sets loaded:', orgUnitGroupSets.length); // Debug
                 
                 if (orgUnitGroupSets.length > 0) {
                     const select = document.getElementById('groupSetSelect');
@@ -1006,20 +997,26 @@
                         }
                     });
                     
-                    // FIXED: Always show the container when group sets are loaded
-                    document.getElementById('groupSetsContainer').style.display = 'block';
-                    log(`Loaded ${orgUnitGroupSets.length} group sets with ${Object.keys(orgUnitGroups).length} groups`, 'success');
-                    showNotification(`Loaded ${orgUnitGroupSets.length} facility type group sets`, 'info');
+                    // CRITICAL: Make sure the container is shown
+                    const container = document.getElementById('groupSetsContainer');
+                    if (container) {
+                        container.style.display = 'block';
+                        console.log('groupSetsContainer shown'); // Debug
+                    } else {
+                        console.error('groupSetsContainer not found!');
+                    }
+                    
+                    log(`Loaded ${orgUnitGroupSets.length} group sets`, 'success');
                 } else {
-                    log('No organisation unit group sets found', 'warning');
+                    log('No organisation unit group sets found in DHIS2', 'warning');
                 }
             } catch (error) {
                 log(`Warning: Could not load group sets: ${error.message}`, 'warning');
-                showNotification('Could not load facility types - filter will not be available', 'warning');
+                console.error('Group sets error:', error);
             }
         }
 
-        // FIXED: Better group options display with clickable chips
+        // FIXED: Better group options display with checkboxes (restored original format)
         function loadGroupSetOptions() {
             const select = document.getElementById('groupSetSelect');
             const selectedId = select.value;
@@ -1040,37 +1037,46 @@
             list.innerHTML = '';
             selectedGroupOptions.clear();
             
-            // FIXED: Use clickable chips instead of checkboxes
             groupSet.organisationUnitGroups.forEach(group => {
-                const chip = document.createElement('div');
-                chip.className = 'facility-type-chip';
-                chip.dataset.id = group.id;
-                chip.textContent = group.displayName || group.name;
-                chip.onclick = () => {
-                    chip.classList.toggle('selected');
-                    if (chip.classList.contains('selected')) {
+                const div = document.createElement('div');
+                div.style.cssText = 'padding: 6px 10px; margin: 2px 0; display: flex; align-items: center; gap: 8px;';
+                
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = `group-${group.id}`;
+                checkbox.dataset.id = group.id;
+                checkbox.style.accentColor = '#004080';
+                checkbox.onchange = () => {
+                    if (checkbox.checked) {
                         selectedGroupOptions.add(group.id);
                     } else {
                         selectedGroupOptions.delete(group.id);
                     }
                 };
-                list.appendChild(chip);
+                
+                const label = document.createElement('label');
+                label.htmlFor = `group-${group.id}`;
+                label.textContent = group.displayName || group.name;
+                label.style.cursor = 'pointer';
+                
+                div.appendChild(checkbox);
+                div.appendChild(label);
+                list.appendChild(div);
             });
             
             container.style.display = 'block';
-            log(`Showing ${groupSet.organisationUnitGroups.length} facility types for ${groupSet.displayName || groupSet.name}`, 'info');
         }
 
         function selectAllGroupOptions() {
-            document.querySelectorAll('#groupOptionsList .facility-type-chip').forEach(chip => {
-                chip.classList.add('selected');
-                selectedGroupOptions.add(chip.dataset.id);
+            document.querySelectorAll('#groupOptionsList input[type="checkbox"]').forEach(cb => {
+                cb.checked = true;
+                selectedGroupOptions.add(cb.dataset.id);
             });
         }
 
         function clearAllGroupOptions() {
-            document.querySelectorAll('#groupOptionsList .facility-type-chip').forEach(chip => {
-                chip.classList.remove('selected');
+            document.querySelectorAll('#groupOptionsList input[type="checkbox"]').forEach(cb => {
+                cb.checked = false;
             });
             selectedGroupOptions.clear();
         }
