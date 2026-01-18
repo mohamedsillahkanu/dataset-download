@@ -310,21 +310,28 @@
                         </div>
                     </div>
 
-                    <!-- Organisation Unit Group Sets (Facility Types) -->
-                    <div id="groupSetsContainer" style="display: none; margin-bottom: 15px;">
-                        <label class="form-label">Filter by Facility Type (Optional)</label>
+                    <!-- Organisation Unit Group Sets (Facility Types) - BEFORE the tree so filter affects display -->
+                    <div id="groupSetsContainer" style="margin-bottom: 15px;">
                         <div style="margin-bottom: 10px;">
-                            <select class="form-select" id="groupSetSelect" onchange="loadGroupSetOptions()">
-                                <option value="">-- Select a Group Set --</option>
-                            </select>
+                            <button type="button" class="btn-secondary" onclick="loadOrgUnitGroupSets()" id="loadFacilityTypesBtn" style="width: auto;">
+                                Load Facility Types
+                            </button>
                         </div>
-                        <div id="groupOptionsContainer" style="display: none; background: #f8f9fa; border: 2px solid #004080; border-radius: 8px; padding: 15px; max-height: 200px; overflow-y: auto;">
+                        <div id="groupSetsContent" style="display: none;">
+                            <label class="form-label">Filter by Facility Type (Optional)</label>
                             <div style="margin-bottom: 10px;">
-                                <button type="button" class="control-btn select-all" onclick="selectAllGroupOptions()" style="padding: 5px 10px; font-size: 11px;">Select All</button>
-                                <button type="button" class="control-btn clear" onclick="clearAllGroupOptions()" style="padding: 5px 10px; font-size: 11px;">Clear All</button>
-                                <button type="button" class="btn-secondary" onclick="applyFacilityTypeFilter()" style="padding: 5px 15px; font-size: 11px; margin-left: 10px;">Apply Filter</button>
+                                <select class="form-select" id="groupSetSelect" onchange="loadGroupSetOptions()">
+                                    <option value="">-- Select a Group Set --</option>
+                                </select>
                             </div>
-                            <div id="groupOptionsList"></div>
+                            <div id="groupOptionsContainer" style="display: none; background: #f8f9fa; border: 2px solid #004080; border-radius: 8px; padding: 15px; max-height: 200px; overflow-y: auto;">
+                                <div style="margin-bottom: 10px;">
+                                    <button type="button" class="control-btn select-all" onclick="selectAllGroupOptions()" style="padding: 5px 10px; font-size: 11px;">Select All</button>
+                                    <button type="button" class="control-btn clear" onclick="clearAllGroupOptions()" style="padding: 5px 10px; font-size: 11px;">Clear All</button>
+                                    <button type="button" class="btn-secondary" onclick="applyFacilityTypeFilter()" style="padding: 5px 15px; font-size: 11px; margin-left: 10px;">Apply Filter</button>
+                                </div>
+                                <div id="groupOptionsList"></div>
+                            </div>
                         </div>
                     </div>
 
@@ -829,7 +836,11 @@
             if (groupSetSelect) groupSetSelect.value = '';
             const groupOptionsContainer = document.getElementById('groupOptionsContainer');
             if (groupOptionsContainer) groupOptionsContainer.style.display = 'none';
+            const groupSetsContent = document.getElementById('groupSetsContent');
+            if (groupSetsContent) groupSetsContent.style.display = 'none';
             document.querySelectorAll('#groupOptionsList input[type="checkbox"]').forEach(cb => cb.checked = false);
+            const loadFacilityTypesBtn = document.getElementById('loadFacilityTypesBtn');
+            if (loadFacilityTypesBtn) loadFacilityTypesBtn.textContent = 'Load Facility Types';
             
             if (allOrgUnitsData.length > 0 && orgUnitsData.length !== allOrgUnitsData.length) {
                 orgUnitsData = [...allOrgUnitsData];
@@ -899,15 +910,15 @@
                 log('Fetching organisation units...', 'info');
                 showNotification('Loading organisation units...', 'info');
                 
-                btn.textContent = 'Loading... 20%';
+                btn.textContent = 'Loading... 30%';
                 const url = `${state.config.instanceUrl}/api/organisationUnits.json?fields=id,displayName,level,parent[id],children[id],organisationUnitGroups[id,name]&paging=false`;
                 const response = await fetchWithAuth(url);
                 
-                btn.textContent = 'Loading... 50%';
+                btn.textContent = 'Loading... 60%';
                 if (!response.ok) throw new Error('Failed to fetch organisation units');
                 const data = await response.json();
                 
-                btn.textContent = 'Loading... 70%';
+                btn.textContent = 'Loading... 80%';
                 orgUnitsData = data.organisationUnits;
                 allOrgUnitsData = [...orgUnitsData];
                 
@@ -917,17 +928,12 @@
                 populateFacilityLevelSelector();
                 document.getElementById('facilityLevelSelector').classList.add('active');
                 
-                btn.textContent = 'Loading... 80%';
-                const tree = buildOrgUnitTree(orgUnitsData);
-                
                 btn.textContent = 'Loading... 90%';
+                const tree = buildOrgUnitTree(orgUnitsData);
                 renderOrgUnitTree(tree);
                 
                 log(`Loaded ${orgUnitsData.length} organisation units`, 'success');
                 showNotification(`Loaded ${orgUnitsData.length} organisation units`, 'success');
-                
-                btn.textContent = 'Loading Groups...';
-                await loadOrgUnitGroupSets();
                 
                 btn.textContent = 'Done!';
                 setTimeout(() => { btn.textContent = originalText; }, 1000);
@@ -967,8 +973,13 @@
             showNotification(`Facility level set to Level ${facilityLevel}`, 'info');
         }
 
-        // FIXED: Better group sets loading - ensures container is shown
+        // FIXED: Load group sets with button - shows content when loaded
         async function loadOrgUnitGroupSets() {
+            const btn = document.getElementById('loadFacilityTypesBtn');
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Loading...';
+            
             try {
                 log('Fetching organisation unit group sets...', 'info');
                 const url = `${state.config.instanceUrl}/api/organisationUnitGroupSets.json?fields=id,displayName,name,organisationUnitGroups[id,displayName,name]&paging=false`;
@@ -997,22 +1008,26 @@
                         }
                     });
                     
-                    // CRITICAL: Make sure the container is shown
-                    const container = document.getElementById('groupSetsContainer');
-                    if (container) {
-                        container.style.display = 'block';
-                        console.log('groupSetsContainer shown'); // Debug
-                    } else {
-                        console.error('groupSetsContainer not found!');
-                    }
+                    // Show the content section
+                    document.getElementById('groupSetsContent').style.display = 'block';
                     
                     log(`Loaded ${orgUnitGroupSets.length} group sets`, 'success');
+                    showNotification(`Loaded ${orgUnitGroupSets.length} facility type group sets`, 'success');
+                    
+                    btn.textContent = 'Done!';
+                    setTimeout(() => { btn.textContent = 'Reload Facility Types'; }, 1000);
                 } else {
                     log('No organisation unit group sets found in DHIS2', 'warning');
+                    showNotification('No facility type groups found in DHIS2', 'warning');
+                    btn.textContent = originalText;
                 }
             } catch (error) {
                 log(`Warning: Could not load group sets: ${error.message}`, 'warning');
+                showNotification(`Failed to load facility types: ${error.message}`, 'error');
                 console.error('Group sets error:', error);
+                btn.textContent = originalText;
+            } finally {
+                btn.disabled = false;
             }
         }
 
