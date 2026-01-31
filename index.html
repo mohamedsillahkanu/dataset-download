@@ -321,6 +321,10 @@
                         </div>
                         <div id="groupSetsContent" style="display: none;">
                             <label class="form-label">Filter by Facility Type (Optional)</label>
+                            <div id="activeFilterBadge" style="display: none; background: #ffc107; color: #000; padding: 8px 15px; border-radius: 6px; margin-bottom: 10px; font-weight: 600;">
+                                <span id="activeFilterText">Filter Active</span>
+                                <button type="button" onclick="clearFilterAndReload()" style="margin-left: 10px; background: #dc3545; color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-family: 'Oswald', Arial, sans-serif; font-size: 12px;">Clear Filter</button>
+                            </div>
                             <div id="groupOptionsContainer" style="background: #f8f9fa; border: 2px solid #004080; border-radius: 8px; padding: 15px; max-height: 250px; overflow-y: auto;">
                                 <div style="margin-bottom: 10px;">
                                     <button type="button" class="control-btn select-all" onclick="selectAllGroupOptions()" style="padding: 5px 10px; font-size: 11px;">Select All</button>
@@ -437,6 +441,9 @@
 
                     <!-- Download Button -->
                     <div style="text-align: center; margin-top: 30px; display: flex; justify-content: center; gap: 15px; flex-wrap: wrap;">
+                        <button type="button" class="btn-secondary" onclick="previewDownload()" style="padding: 16px 30px; font-size: 14px;">
+                            PREVIEW SELECTION
+                        </button>
                         <button type="button" class="btn-gold" id="downloadDatasetsBtn" onclick="executeDownloadDatasets()" style="padding: 16px 40px; font-size: 16px;">
                             DOWNLOAD DATASET DATA
                         </button>
@@ -855,6 +862,8 @@
             if (groupSetsContent) groupSetsContent.style.display = 'none';
             const loadFacilityTypesBtn = document.getElementById('loadFacilityTypesBtn');
             if (loadFacilityTypesBtn) loadFacilityTypesBtn.textContent = 'Load Facility Types';
+            const activeFilterBadge = document.getElementById('activeFilterBadge');
+            if (activeFilterBadge) activeFilterBadge.style.display = 'none';
             
             if (allOrgUnitsData.length > 0 && orgUnitsData.length !== allOrgUnitsData.length) {
                 orgUnitsData = [...allOrgUnitsData];
@@ -1109,17 +1118,52 @@
             btn.disabled = true;
             btn.textContent = 'Filtering...';
             
+            showProgress();
+            clearLogs();
+            
             setTimeout(() => {
+                const filterBadge = document.getElementById('activeFilterBadge');
+                const filterText = document.getElementById('activeFilterText');
+                
+                log('═══════════════════════════════════════', 'info');
+                log('       APPLYING FACILITY TYPE FILTER', 'info');
+                log('═══════════════════════════════════════', 'info');
+                
                 if (selectedGroupOptions.size === 0) {
                     orgUnitsData = [...allOrgUnitsData];
                     showNotification('No filter applied - showing all organisation units', 'info');
-                    log('Filter cleared - showing all organisation units', 'info');
+                    log('No facility types selected - showing ALL facilities', 'warning');
+                    filterBadge.style.display = 'none';
                 } else {
+                    // Log selected filter types
+                    const selectedTypes = Array.from(selectedGroupOptions).map(id => orgUnitGroups[id] || id);
+                    log(`Selected facility types: ${selectedTypes.join(', ')}`, 'info');
+                    log('', 'info');
+                    
+                    // Count BEFORE filtering
+                    const totalBefore = allOrgUnitsData.filter(ou => ou.level === facilityLevel).length;
+                    log(`Total facilities BEFORE filter: ${totalBefore}`, 'info');
+                    
                     // FIXED: Filter org units that belong to selected groups
-                    orgUnitsData = allOrgUnitsData.filter(ou => {
+                    const matchingFacilities = allOrgUnitsData.filter(ou => {
                         if (!ou.organisationUnitGroups || ou.organisationUnitGroups.length === 0) return false;
                         return ou.organisationUnitGroups.some(g => selectedGroupOptions.has(g.id));
                     });
+                    
+                    // Log facilities that match the filter
+                    const matchingAtFacilityLevel = matchingFacilities.filter(ou => ou.level === facilityLevel);
+                    log(`Facilities MATCHING filter: ${matchingAtFacilityLevel.length}`, 'success');
+                    
+                    // Show sample of matching facilities
+                    matchingAtFacilityLevel.slice(0, 5).forEach(fac => {
+                        const groups = fac.organisationUnitGroups.map(g => g.name || g.id).join(', ');
+                        log(`  ✓ ${fac.displayName} [${groups}]`, 'success');
+                    });
+                    if (matchingAtFacilityLevel.length > 5) {
+                        log(`  ... and ${matchingAtFacilityLevel.length - 5} more`, 'info');
+                    }
+                    
+                    orgUnitsData = [...matchingFacilities];
                     
                     // Also include parent org units for navigation
                     const filteredIds = new Set(orgUnitsData.map(ou => ou.id));
@@ -1141,11 +1185,21 @@
                     });
                     
                     orgUnitsData = [...orgUnitsData, ...parentsToAdd];
+                    log(`Added ${parentsToAdd.length} parent org units for navigation`, 'info');
                     
-                    const groupNames = Array.from(selectedGroupOptions).map(id => orgUnitGroups[id] || id).join(', ');
                     const facilityCount = orgUnitsData.filter(ou => ou.level === facilityLevel).length;
-                    log(`Filtered to ${facilityCount} facilities matching: ${groupNames}`, 'info');
+                    
+                    log('', 'info');
+                    log(`═══ FILTER RESULT ═══`, 'success');
+                    log(`${facilityCount} facilities now available (was ${totalBefore})`, 'success');
+                    log(`Only these ${facilityCount} facilities will be downloaded`, 'success');
+                    log(`═════════════════════`, 'success');
+                    
                     showNotification(`Filtered to ${facilityCount} facilities`, 'success');
+                    
+                    // Show active filter badge
+                    filterText.textContent = `Filter Active: ${facilityCount} of ${totalBefore} facilities (${selectedTypes.join(', ')})`;
+                    filterBadge.style.display = 'block';
                 }
                 
                 if (orgUnitsData.length > 0) {
@@ -1164,6 +1218,132 @@
                     btn.textContent = originalText; 
                 }, 500);
             }, 100);
+        }
+        
+        // Clear filter and reload all org units
+        function clearFilterAndReload() {
+            selectedGroupOptions.clear();
+            document.querySelectorAll('#groupOptionsList input[type="checkbox"]').forEach(cb => cb.checked = false);
+            
+            orgUnitsData = [...allOrgUnitsData];
+            
+            document.getElementById('activeFilterBadge').style.display = 'none';
+            
+            if (orgUnitsData.length > 0) {
+                maxOrgUnitLevel = Math.max(...orgUnitsData.map(ou => ou.level));
+                facilityLevel = determineFacilityLevel();
+                populateFacilityLevelSelector();
+            }
+            
+            selectedOrgUnits.clear();
+            const tree = buildOrgUnitTree(orgUnitsData);
+            renderOrgUnitTree(tree);
+            
+            showNotification('Filter cleared - showing all facilities', 'info');
+            log('Filter cleared - showing all facilities', 'info');
+        }
+        
+        // Preview what will be downloaded without actually downloading
+        function previewDownload() {
+            showProgress();
+            clearLogs();
+            
+            log('═══════════════════════════════════════', 'info');
+            log('       DOWNLOAD PREVIEW', 'info');
+            log('═══════════════════════════════════════', 'info');
+            log('', 'info');
+            
+            // Data Elements
+            const selectedDataElementIds = Array.from(selectedDataElements.keys());
+            log(`📊 DATA ELEMENTS: ${selectedDataElementIds.length} selected`, 'info');
+            if (selectedDataElementIds.length === 0) {
+                log('   ⚠️ No data elements selected!', 'error');
+            } else {
+                const samples = Array.from(selectedDataElements.values()).slice(0, 5);
+                samples.forEach(de => log(`   - ${de.elementName}`, 'info'));
+                if (selectedDataElementIds.length > 5) {
+                    log(`   ... and ${selectedDataElementIds.length - 5} more`, 'info');
+                }
+            }
+            log('', 'info');
+            
+            // Filter Status
+            const totalFacilities = allOrgUnitsData.filter(ou => ou.level === facilityLevel).length;
+            const filteredFacilities = orgUnitsData.filter(ou => ou.level === facilityLevel).length;
+            const isFilterActive = filteredFacilities < totalFacilities;
+            
+            log(`🔍 FILTER STATUS:`, 'info');
+            if (isFilterActive) {
+                log(`   ✓ FILTER IS ACTIVE`, 'warning');
+                log(`   ${filteredFacilities} of ${totalFacilities} facilities match filter`, 'warning');
+                const selectedTypes = Array.from(selectedGroupOptions).map(id => orgUnitGroups[id] || id);
+                log(`   Types: ${selectedTypes.join(', ')}`, 'warning');
+            } else {
+                log(`   No filter - all ${totalFacilities} facilities available`, 'info');
+            }
+            log('', 'info');
+            
+            // Organisation Units
+            log(`🏥 ORGANISATION UNITS: ${selectedOrgUnits.size} selected`, 'info');
+            if (selectedOrgUnits.size === 0) {
+                log('   ⚠️ No organisation units selected!', 'error');
+            } else {
+                selectedOrgUnits.forEach(ouId => {
+                    const ou = orgUnitsData.find(o => o.id === ouId) || allOrgUnitsData.find(o => o.id === ouId);
+                    if (ou) {
+                        const isFacility = ou.level === facilityLevel;
+                        log(`   - ${ou.displayName} (Level ${ou.level}${isFacility ? ' - HF' : ''})`, 'info');
+                    }
+                });
+            }
+            log('', 'info');
+            
+            // Expanded Facilities
+            const expandedFacilities = expandSelectionToFacilities();
+            log(`📋 FACILITIES TO DOWNLOAD: ${expandedFacilities.length}`, 'success');
+            if (expandedFacilities.length === 0) {
+                log('   ⚠️ No facilities will be downloaded!', 'error');
+                if (isFilterActive) {
+                    log('   This may be because the filter excludes all facilities', 'warning');
+                    log('   under your selected organisation units.', 'warning');
+                }
+            } else {
+                // Show facilities with their types
+                const facilityDetails = expandedFacilities.map(fId => {
+                    const fac = allOrgUnitsData.find(o => o.id === fId);
+                    if (!fac) return { name: fId, types: 'Unknown' };
+                    const types = fac.organisationUnitGroups?.map(g => g.name || g.id).join(', ') || 'No type';
+                    return { name: fac.displayName, types };
+                }).sort((a, b) => a.name.localeCompare(b.name));
+                
+                facilityDetails.slice(0, 15).forEach((fac, i) => {
+                    log(`   ${i+1}. ${fac.name} [${fac.types}]`, 'info');
+                });
+                if (expandedFacilities.length > 15) {
+                    log(`   ... and ${expandedFacilities.length - 15} more facilities`, 'info');
+                }
+            }
+            log('', 'info');
+            
+            // Period
+            const period = getPeriodFromForm();
+            log(`📅 PERIOD: ${period || '⚠️ Not selected!'}`, period ? 'info' : 'error');
+            if (selectedPeriodsForExport.length > 0) {
+                log(`   ${selectedPeriodsForExport.length} period(s): ${selectedPeriodsForExport.join(', ')}`, 'info');
+            }
+            log('', 'info');
+            
+            log('═══════════════════════════════════════', 'info');
+            
+            // Summary
+            const ready = selectedDataElementIds.length > 0 && expandedFacilities.length > 0 && period;
+            if (ready) {
+                log('✓ Ready to download!', 'success');
+                showNotification(`Preview: ${expandedFacilities.length} facilities, ${selectedDataElementIds.length} data elements`, 'success');
+            } else {
+                log('✗ Please complete all selections before downloading', 'error');
+                showNotification('Please complete all selections', 'error');
+            }
         }
 
         function buildOrgUnitTree(orgUnits) {
@@ -1273,7 +1453,7 @@
             return div;
         }
         
-        // Count all facilities under a given org unit
+        // Count all facilities under a given org unit (uses filtered data)
         function countFacilitiesUnder(orgUnit) {
             let count = 0;
             if (orgUnit.level === facilityLevel) {
@@ -1285,6 +1465,11 @@
                 });
             }
             return count;
+        }
+        
+        // Get filtered facility count for logging
+        function getFilteredFacilityCount() {
+            return orgUnitsData.filter(ou => ou.level === facilityLevel).length;
         }
 
         function toggleOrgUnit(id) {
@@ -1317,15 +1502,18 @@
         }
         
         // Get all facility-level org units under a given org unit ID
-        function getAllFacilitiesUnder(orgUnitId) {
+        // IMPORTANT: Only returns facilities that match the current filter
+        function getAllFacilitiesUnder(orgUnitId, validFacilityIds) {
             const facilities = [];
             const orgUnit = allOrgUnitsData.find(ou => ou.id === orgUnitId);
             
             if (!orgUnit) return facilities;
             
-            // If this is already at facility level, return it
+            // If this is already at facility level, check if it's in the filtered set
             if (orgUnit.level === facilityLevel) {
-                facilities.push(orgUnitId);
+                if (validFacilityIds.has(orgUnitId)) {
+                    facilities.push(orgUnitId);
+                }
                 return facilities;
             }
             
@@ -1334,7 +1522,10 @@
                 const children = allOrgUnitsData.filter(ou => ou.parent && ou.parent.id === parentId);
                 children.forEach(child => {
                     if (child.level === facilityLevel) {
-                        facilities.push(child.id);
+                        // Only add if it passes the filter
+                        if (validFacilityIds.has(child.id)) {
+                            facilities.push(child.id);
+                        }
                     } else if (child.level < facilityLevel) {
                         findFacilities(child.id);
                     }
@@ -1346,13 +1537,58 @@
         }
         
         // Expand selection to include all facilities under selected org units
+        // CRITICAL: Only includes facilities that match the current facility type filter
         function expandSelectionToFacilities() {
             const allFacilityIds = new Set();
             
+            // Step 1: Build the set of valid facility IDs based on filter
+            const validFacilityIds = new Set();
+            
+            // Check if filter is active
+            const filterActive = selectedGroupOptions.size > 0;
+            
+            log('', 'info');
+            log('═══ BUILDING FACILITY LIST ═══', 'info');
+            log(`Filter active: ${filterActive ? 'YES' : 'NO'}`, filterActive ? 'warning' : 'info');
+            
+            if (filterActive) {
+                const selectedTypes = Array.from(selectedGroupOptions).map(id => orgUnitGroups[id] || id);
+                log(`Filtering for: ${selectedTypes.join(', ')}`, 'warning');
+            }
+            
+            // Scan ALL org units data and check each facility against the filter
+            allOrgUnitsData.forEach(ou => {
+                if (ou.level === facilityLevel) {
+                    if (!filterActive) {
+                        // No filter - include all facilities
+                        validFacilityIds.add(ou.id);
+                    } else {
+                        // Filter is active - ONLY include facilities that have matching group
+                        if (ou.organisationUnitGroups && ou.organisationUnitGroups.length > 0) {
+                            const hasMatchingGroup = ou.organisationUnitGroups.some(g => selectedGroupOptions.has(g.id));
+                            if (hasMatchingGroup) {
+                                validFacilityIds.add(ou.id);
+                            }
+                        }
+                        // If facility has no groups or no matching groups, it is NOT included
+                    }
+                }
+            });
+            
+            log(`Valid facilities after filter: ${validFacilityIds.size}`, 'success');
+            
+            // Step 2: For each selected org unit, find facilities underneath that are in validFacilityIds
             selectedOrgUnits.forEach(ouId => {
-                const facilities = getAllFacilitiesUnder(ouId);
+                const facilities = getAllFacilitiesUnder(ouId, validFacilityIds);
+                if (facilities.length > 0) {
+                    const ouName = allOrgUnitsData.find(o => o.id === ouId)?.displayName || ouId;
+                    log(`  ${ouName}: ${facilities.length} facilities`, 'info');
+                }
                 facilities.forEach(fId => allFacilityIds.add(fId));
             });
+            
+            log(`Total facilities to download: ${allFacilityIds.size}`, 'success');
+            log('══════════════════════════════', 'info');
             
             return Array.from(allFacilityIds);
         }
@@ -1550,7 +1786,53 @@
                 
                 // FIXED: Expand selection to get all facilities under selected org units
                 log(`Selected ${selectedOrgUnits.size} organisation unit(s)...`, 'info');
+                
+                // Show what org units were selected
+                selectedOrgUnits.forEach(ouId => {
+                    const ou = orgUnitsData.find(o => o.id === ouId);
+                    if (ou) {
+                        log(`  - ${ou.displayName} (Level ${ou.level})`, 'info');
+                    }
+                });
+                
+                // Check if filter is active
+                const totalFacilities = allOrgUnitsData.filter(ou => ou.level === facilityLevel).length;
+                const filteredFacilities = orgUnitsData.filter(ou => ou.level === facilityLevel).length;
+                const isFilterActive = filteredFacilities < totalFacilities;
+                
+                if (isFilterActive) {
+                    log(``, 'info');
+                    log(`═══ FILTER IS ACTIVE ═══`, 'warning');
+                    log(`Only ${filteredFacilities} of ${totalFacilities} total facilities match the filter`, 'warning');
+                    const selectedTypes = Array.from(selectedGroupOptions).map(id => orgUnitGroups[id] || id);
+                    log(`Filter types: ${selectedTypes.join(', ')}`, 'warning');
+                    log(`════════════════════════`, 'warning');
+                    log(``, 'info');
+                } else {
+                    log(`No filter active: all ${totalFacilities} facilities available`, 'info');
+                }
+                
                 const selectedOrgUnitIds = expandSelectionToFacilities();
+                
+                // Log which facilities will actually be downloaded
+                log(``, 'info');
+                log(`═══ FACILITIES TO DOWNLOAD ═══`, 'success');
+                log(`${selectedOrgUnitIds.length} health facilities will be included:`, 'success');
+                
+                // Show first 10 facilities as sample with their types
+                const sampleSize = Math.min(10, selectedOrgUnitIds.length);
+                for (let i = 0; i < sampleSize; i++) {
+                    const fac = allOrgUnitsData.find(o => o.id === selectedOrgUnitIds[i]);
+                    if (fac) {
+                        const types = fac.organisationUnitGroups?.map(g => g.name || g.id).join(', ') || 'No type';
+                        log(`  ${i+1}. ${fac.displayName} [${types}]`, 'info');
+                    }
+                }
+                if (selectedOrgUnitIds.length > 10) {
+                    log(`  ... and ${selectedOrgUnitIds.length - 10} more`, 'info');
+                }
+                log(`═══════════════════════════════`, 'success');
+                log(``, 'info');
                 
                 if (selectedOrgUnitIds.length === 0) {
                     showNotification('No health facilities found under selected organisation units', 'error');
