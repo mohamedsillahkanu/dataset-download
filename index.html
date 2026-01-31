@@ -111,17 +111,18 @@
         .facility-level-selector select { padding: 8px 15px; border: 2px solid #004080; border-radius: 4px; font-family: 'Oswald', Arial, sans-serif; font-size: 13px; min-width: 250px; }
         .facility-level-selector .info-text { font-size: 12px; color: #856404; margin-top: 10px; padding: 8px; background: #ffeeba; border-radius: 4px; }
         
-        /* Org Unit Items - Facility Level (Clickable) */
-        .org-unit-item { padding: 6px 10px; margin: 2px 0; border-radius: 4px; display: flex; align-items: center; gap: 8px; font-size: 13px; }
-        .org-unit-item.facility-level { cursor: pointer; background: #ffffff; border: 1px solid #ddd; }
-        .org-unit-item.facility-level:hover { background: #e7f3ff; border-color: #004080; }
-        .org-unit-item.facility-level.selected { background: #d4edda; border-color: #28a745; }
-        .org-unit-item.facility-level .org-unit-checkbox { accent-color: #004080; cursor: pointer; }
+        /* Org Unit Items - All Levels Now Selectable */
+        .org-unit-item { padding: 6px 10px; margin: 2px 0; border-radius: 4px; display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; background: #ffffff; border: 1px solid #ddd; }
+        .org-unit-item:hover { background: #e7f3ff; border-color: #004080; }
+        .org-unit-item.selected { background: #d4edda; border-color: #28a745; }
+        .org-unit-item .org-unit-checkbox { accent-color: #004080; cursor: pointer; }
         
-        /* Org Unit Items - Hierarchy Level (Disabled/Gray) */
-        .org-unit-item.hierarchy-level { cursor: default; background: #e9ecef; color: #6c757d; border: 1px solid #dee2e6; }
-        .org-unit-item.hierarchy-level .org-unit-checkbox { display: none; }
-        .org-unit-item.hierarchy-level .level-badge { background: #6c757d; color: white; padding: 1px 6px; border-radius: 3px; font-size: 10px; margin-right: 5px; }
+        /* Facility Level Indicator */
+        .org-unit-item.facility-level { border-left: 3px solid #28a745; }
+        
+        /* Hierarchy Level Badge */
+        .org-unit-item .level-badge { background: #004080; color: white; padding: 1px 6px; border-radius: 3px; font-size: 10px; margin-right: 5px; }
+        .org-unit-item.facility-level .level-badge { background: #28a745; }
         
         .org-unit-toggle { width: 20px; text-align: center; font-weight: bold; color: #004080; cursor: pointer; }
         .org-unit-label { flex: 1; }
@@ -305,8 +306,9 @@
                                 <!-- Options populated dynamically -->
                             </select>
                         </div>
-                        <div class="info-text">
-                            Only organisation units at the selected level can be selected for data download. Higher hierarchy levels are shown for navigation but are not selectable.
+                        <div class="info-text" id="facilityLevelInfo">
+                            <strong>Facility Level:</strong> The detected health facility level where data is reported. 
+                            <br><strong>Tip:</strong> You can select any level (district, region, etc.) and all health facilities underneath will be automatically included in the download.
                         </div>
                     </div>
 
@@ -336,8 +338,22 @@
                     <div class="control-buttons">
                         <button type="button" class="control-btn expand" onclick="expandAllOrgUnits()">Expand All</button>
                         <button type="button" class="control-btn clear" onclick="collapseAllOrgUnits()">Collapse All</button>
-                        <button type="button" class="control-btn select-all" onclick="selectAllFacilities()">Select All Facilities</button>
+                        <button type="button" class="control-btn select-all" onclick="selectAllFacilities()">Select All HFs</button>
+                        <button type="button" class="control-btn select-all" onclick="selectAllAtLevel()" style="border-color: #17a2b8; color: #17a2b8;">Select Level...</button>
                         <button type="button" class="control-btn clear" onclick="clearAllOrgUnits()">Clear All</button>
+                    </div>
+                    
+                    <!-- Level Selection Modal -->
+                    <div id="levelSelectModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+                        <div style="background: white; padding: 25px; border-radius: 8px; border: 3px solid #004080; max-width: 400px; width: 90%;">
+                            <h3 style="margin: 0 0 15px 0; color: #004080;">Select All at Level</h3>
+                            <p style="margin: 0 0 15px 0; font-size: 13px; color: #666;">Choose a level to select all organisation units:</p>
+                            <select id="levelSelectDropdown" class="form-select" style="margin-bottom: 15px;"></select>
+                            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                                <button type="button" class="btn-secondary" onclick="closeLevelModal()" style="padding: 8px 16px;">Cancel</button>
+                                <button type="button" class="btn-gold" onclick="confirmSelectLevel()" style="padding: 8px 16px;">Select</button>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Period Section -->
@@ -1191,7 +1207,7 @@
             const itemDiv = document.createElement('div');
             
             const isFacilityLevel = orgUnit.level === facilityLevel;
-            itemDiv.className = `org-unit-item ${isFacilityLevel ? 'facility-level' : 'hierarchy-level'}`;
+            itemDiv.className = `org-unit-item ${isFacilityLevel ? 'facility-level' : ''}`;
             itemDiv.dataset.id = orgUnit.id;
             itemDiv.dataset.level = orgUnit.level;
             
@@ -1207,34 +1223,42 @@
             
             itemDiv.appendChild(toggle);
             
-            if (isFacilityLevel) {
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.className = 'org-unit-checkbox';
-                checkbox.dataset.id = orgUnit.id;
-                checkbox.checked = selectedOrgUnits.has(orgUnit.id);
-                checkbox.onchange = (e) => { e.stopPropagation(); toggleOrgUnitSelection(orgUnit.id, e.target.checked); };
-                itemDiv.appendChild(checkbox);
-                
-                const label = document.createElement('span');
-                label.className = 'org-unit-label';
-                label.textContent = orgUnit.displayName;
-                label.onclick = () => { checkbox.checked = !checkbox.checked; toggleOrgUnitSelection(orgUnit.id, checkbox.checked); };
-                itemDiv.appendChild(label);
-                
-                if (selectedOrgUnits.has(orgUnit.id)) {
-                    itemDiv.classList.add('selected');
+            // ALL levels are now selectable
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'org-unit-checkbox';
+            checkbox.dataset.id = orgUnit.id;
+            checkbox.checked = selectedOrgUnits.has(orgUnit.id);
+            checkbox.onchange = (e) => { e.stopPropagation(); toggleOrgUnitSelection(orgUnit.id, e.target.checked); };
+            itemDiv.appendChild(checkbox);
+            
+            // Level badge for all levels
+            const badge = document.createElement('span');
+            badge.className = 'level-badge';
+            badge.textContent = isFacilityLevel ? 'HF' : `L${orgUnit.level}`;
+            badge.title = isFacilityLevel ? 'Health Facility Level' : `Level ${orgUnit.level}`;
+            itemDiv.appendChild(badge);
+            
+            const label = document.createElement('span');
+            label.className = 'org-unit-label';
+            label.textContent = orgUnit.displayName;
+            label.onclick = () => { checkbox.checked = !checkbox.checked; toggleOrgUnitSelection(orgUnit.id, checkbox.checked); };
+            itemDiv.appendChild(label);
+            
+            // Show count of facilities underneath for non-facility levels
+            if (!isFacilityLevel && orgUnit.children && orgUnit.children.length > 0) {
+                const facilityCount = countFacilitiesUnder(orgUnit);
+                if (facilityCount > 0) {
+                    const countBadge = document.createElement('span');
+                    countBadge.style.cssText = 'background: #17a2b8; color: white; padding: 1px 6px; border-radius: 10px; font-size: 10px; margin-left: auto;';
+                    countBadge.textContent = `${facilityCount} HFs`;
+                    countBadge.title = `${facilityCount} health facilities under this unit`;
+                    itemDiv.appendChild(countBadge);
                 }
-            } else {
-                const badge = document.createElement('span');
-                badge.className = 'level-badge';
-                badge.textContent = `L${orgUnit.level}`;
-                itemDiv.appendChild(badge);
-                
-                const label = document.createElement('span');
-                label.className = 'org-unit-label';
-                label.textContent = orgUnit.displayName;
-                itemDiv.appendChild(label);
+            }
+            
+            if (selectedOrgUnits.has(orgUnit.id)) {
+                itemDiv.classList.add('selected');
             }
             
             div.appendChild(itemDiv);
@@ -1247,6 +1271,20 @@
                 div.appendChild(childrenDiv);
             }
             return div;
+        }
+        
+        // Count all facilities under a given org unit
+        function countFacilitiesUnder(orgUnit) {
+            let count = 0;
+            if (orgUnit.level === facilityLevel) {
+                return 1;
+            }
+            if (orgUnit.children) {
+                orgUnit.children.forEach(child => {
+                    count += countFacilitiesUnder(child);
+                });
+            }
+            return count;
         }
 
         function toggleOrgUnit(id) {
@@ -1263,7 +1301,7 @@
 
         function toggleOrgUnitSelection(id, selected) {
             const item = document.querySelector(`.org-unit-item[data-id="${id}"]`);
-            if (!item || !item.classList.contains('facility-level')) return;
+            if (!item) return;
             
             if (selected) { 
                 selectedOrgUnits.add(id); 
@@ -1272,6 +1310,51 @@
                 selectedOrgUnits.delete(id); 
                 item.classList.remove('selected');
             }
+            
+            // Update the checkbox state
+            const checkbox = item.querySelector('.org-unit-checkbox');
+            if (checkbox) checkbox.checked = selected;
+        }
+        
+        // Get all facility-level org units under a given org unit ID
+        function getAllFacilitiesUnder(orgUnitId) {
+            const facilities = [];
+            const orgUnit = allOrgUnitsData.find(ou => ou.id === orgUnitId);
+            
+            if (!orgUnit) return facilities;
+            
+            // If this is already at facility level, return it
+            if (orgUnit.level === facilityLevel) {
+                facilities.push(orgUnitId);
+                return facilities;
+            }
+            
+            // Find all children at facility level
+            function findFacilities(parentId) {
+                const children = allOrgUnitsData.filter(ou => ou.parent && ou.parent.id === parentId);
+                children.forEach(child => {
+                    if (child.level === facilityLevel) {
+                        facilities.push(child.id);
+                    } else if (child.level < facilityLevel) {
+                        findFacilities(child.id);
+                    }
+                });
+            }
+            
+            findFacilities(orgUnitId);
+            return facilities;
+        }
+        
+        // Expand selection to include all facilities under selected org units
+        function expandSelectionToFacilities() {
+            const allFacilityIds = new Set();
+            
+            selectedOrgUnits.forEach(ouId => {
+                const facilities = getAllFacilitiesUnder(ouId);
+                facilities.forEach(fId => allFacilityIds.add(fId));
+            });
+            
+            return Array.from(allFacilityIds);
         }
 
         function expandAllOrgUnits() { 
@@ -1285,6 +1368,7 @@
         }
         
         function selectAllFacilities() { 
+            // Select all org units at facility level
             document.querySelectorAll('.org-unit-item.facility-level').forEach(item => {
                 const id = item.dataset.id;
                 selectedOrgUnits.add(id);
@@ -1292,13 +1376,62 @@
                 const checkbox = item.querySelector('.org-unit-checkbox');
                 if (checkbox) checkbox.checked = true;
             });
-            showNotification(`Selected ${selectedOrgUnits.size} facilities at Level ${facilityLevel}`, 'info');
+            
+            const facilityCount = document.querySelectorAll('.org-unit-item.facility-level').length;
+            showNotification(`Selected ${facilityCount} health facilities at Level ${facilityLevel}`, 'info');
+            log(`Selected ${facilityCount} health facilities`, 'success');
         }
         
         function clearAllOrgUnits() { 
             document.querySelectorAll('.org-unit-checkbox').forEach(checkbox => checkbox.checked = false); 
             selectedOrgUnits.clear(); 
-            document.querySelectorAll('.org-unit-item').forEach(item => item.classList.remove('selected')); 
+            document.querySelectorAll('.org-unit-item').forEach(item => item.classList.remove('selected'));
+            log('Cleared all organisation unit selections', 'info');
+        }
+        
+        // Level selection modal functions
+        function selectAllAtLevel() {
+            if (allOrgUnitsData.length === 0) {
+                showNotification('Please load organisation units first', 'error');
+                return;
+            }
+            
+            const levels = [...new Set(allOrgUnitsData.map(ou => ou.level))].sort((a, b) => a - b);
+            const dropdown = document.getElementById('levelSelectDropdown');
+            dropdown.innerHTML = '';
+            
+            levels.forEach(level => {
+                const count = allOrgUnitsData.filter(ou => ou.level === level).length;
+                const isFacility = level === facilityLevel;
+                const option = document.createElement('option');
+                option.value = level;
+                option.textContent = `Level ${level} - ${count} units${isFacility ? ' (Health Facilities)' : ''}`;
+                dropdown.appendChild(option);
+            });
+            
+            document.getElementById('levelSelectModal').style.display = 'flex';
+        }
+        
+        function closeLevelModal() {
+            document.getElementById('levelSelectModal').style.display = 'none';
+        }
+        
+        function confirmSelectLevel() {
+            const level = parseInt(document.getElementById('levelSelectDropdown').value);
+            
+            // Select all org units at this level
+            document.querySelectorAll(`.org-unit-item[data-level="${level}"]`).forEach(item => {
+                const id = item.dataset.id;
+                selectedOrgUnits.add(id);
+                item.classList.add('selected');
+                const checkbox = item.querySelector('.org-unit-checkbox');
+                if (checkbox) checkbox.checked = true;
+            });
+            
+            const count = document.querySelectorAll(`.org-unit-item[data-level="${level}"]`).length;
+            closeLevelModal();
+            showNotification(`Selected ${count} organisation units at Level ${level}`, 'success');
+            log(`Selected ${count} organisation units at Level ${level}`, 'success');
         }
 
         // FIXED: Generate all monthly periods between two dates
@@ -1395,14 +1528,13 @@
         // FIXED: Batch processing to handle large numbers of org units
         async function executeDownloadDatasets() {
             const selectedDataElementIds = Array.from(selectedDataElements.keys());
-            const selectedOrgUnitIds = Array.from(selectedOrgUnits);
             
             if (selectedDataElementIds.length === 0) { 
                 showNotification('Please select at least one data element', 'error'); 
                 return; 
             }
-            if (selectedOrgUnitIds.length === 0) { 
-                showNotification('Please select at least one health facility', 'error'); 
+            if (selectedOrgUnits.size === 0) { 
+                showNotification('Please select at least one organisation unit', 'error'); 
                 return; 
             }
             
@@ -1415,6 +1547,18 @@
             try {
                 log(`Processing ${selectedDataElementIds.length} selected data elements...`, 'info');
                 setProgress(5);
+                
+                // FIXED: Expand selection to get all facilities under selected org units
+                log(`Selected ${selectedOrgUnits.size} organisation unit(s)...`, 'info');
+                const selectedOrgUnitIds = expandSelectionToFacilities();
+                
+                if (selectedOrgUnitIds.length === 0) {
+                    showNotification('No health facilities found under selected organisation units', 'error');
+                    if (downloadBtn) { downloadBtn.disabled = false; downloadBtn.textContent = 'DOWNLOAD DATASET DATA'; }
+                    return;
+                }
+                
+                log(`Expanded to ${selectedOrgUnitIds.length} health facilities at Level ${facilityLevel}`, 'success');
                 
                 const dataElementMap = {};
                 selectedDataElements.forEach((info, id) => {
